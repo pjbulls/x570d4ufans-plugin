@@ -1,0 +1,123 @@
+<?xml version='1.0' standalone='yes'?>
+<!DOCTYPE PLUGIN [
+<!ENTITY name      "x570d4ufans">
+<!ENTITY author    "pjbulls">
+<!ENTITY version   "2026.08.31">
+<!ENTITY launch    "Dashboard">
+<!ENTITY gitURL    "https://raw.githubusercontent.com/&author;/x570d4ufans-plugin/main">
+<!ENTITY plgURL    "&gitURL;/&name;.plg">
+<!ENTITY pkgURL    "&gitURL;/packages">
+<!ENTITY plgPATH   "/boot/config/plugins/&name;">
+<!ENTITY plgNAME   "&name;-&version;">
+<!ENTITY emhttp    "/usr/local/emhttp/plugins/&name;">
+]>
+
+<PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&plgURL;">
+
+<CHANGES>
+### 2026.08.31
+- Initial release.
+</CHANGES>
+
+<!-- PRE-INSTALL: make sure the persistent config dir exists -->
+<FILE Run="/bin/bash">
+<INLINE>
+mkdir -p &plgPATH;
+rm -f $(ls &plgPATH;/&name;*.txz 2>/dev/null)
+</INLINE>
+</FILE>
+
+<!-- INSTALL -->
+<FILE Name="&plgPATH;/&plgNAME;.txz">
+<URL>&gitURL;/archive/&plgNAME;.txz</URL>
+</FILE>
+
+<FILE Name="&plgPATH;/&plgNAME;.sha256">
+<URL>&gitURL;/archive/&plgNAME;.sha256</URL>
+</FILE>
+
+<FILE Run="/bin/bash">
+<INLINE>
+PKG="&plgPATH;/&plgNAME;"
+EXPECTED="$(cat ${PKG}.sha256)"
+ACTUAL="$(sha256sum "${PKG}.txz" 2>/dev/null | awk '{print $1}')"
+if [[ -z "$ACTUAL" || "$ACTUAL" != "$EXPECTED" ]]; then
+  echo "&name;: checksum mismatch for $PKG"
+  echo "&name;:   expected $EXPECTED"
+  echo "&name;:   got      ${ACTUAL:-(file missing or unreadable)}"
+  rm -f "${PKG}.txz" "${PKG}.sha256"
+  exit 1
+fi
+</INLINE>
+</FILE>
+
+<FILE Name="&plgPATH;/&plgNAME;.txz" Run="upgradepkg --install-new">
+</FILE>
+
+<!-- POST-INSTALL: write default config if one doesn't already exist, (re)start the service. -->
+<FILE Run="/bin/bash">
+<INLINE>
+CFG="&plgPATH;/fans.cfg"
+<![CDATA[
+if [ ! -f "$CFG" ]; then
+  cat > "$CFG" <<'CFGEOF'
+# fans.cfg - persistent configuration for x570d4ufans.
+# Edit and then:
+#   /etc/rc.d/rc.x570d4ufans restart
+
+POLL_INTERVAL=15
+
+CPU_CURVE="0:20,40:20,55:35,65:55,75:80,85:100"
+HDD_CURVE="0:20,30:20,38:40,40:60,42:80,43:100"
+GPU_CURVE="0:20,50:20,55:40,60:65,80:100"
+
+CPU_HWMON_NAME=""
+GPU_HWMON_NAME=""
+
+HDD_TEMP_SOURCE="emhttp"
+HDD_EXCLUDE=""
+HDD_INCLUDE_NONROTATIONAL="no"
+
+COMBINE_STRATEGY="avg"
+
+IPMI_SENSORS_BIN=""
+
+FAN_MAP_CPU="FAN3"
+FAN_MAP_GPU="FAN2"
+FAN_MAP_HDD="FAN4_1"
+FAN_MAP_SYS="FAN5_1"
+CFGEOF
+fi
+]]>
+
+/etc/rc.d/rc.x570d4ufans start
+
+echo ""
+echo "----------------------------------------------------"
+echo " x570d4ufans has been installed."
+echo " Config: &plgPATH;/fans.cfg"
+echo "----------------------------------------------------"
+echo ""
+</INLINE>
+</FILE>
+
+<!-- REMOVE -->
+<FILE Run="/bin/bash" Method="remove">
+<INLINE>
+/etc/rc.d/rc.x570d4ufans stop
+removepkg &plgPATH;/*.txz
+
+# Config on flash is left in place intentionally.
+# Uncomment to wipe it on removal instead:
+# rm -rf &plgPATH;
+
+echo ""
+echo "----------------------------------------------------"
+echo " x570d4ufans has been removed."
+echo " Config persists at &plgPATH;/fans.cfg"
+echo "----------------------------------------------------"
+echo ""
+</INLINE>
+</FILE>
+
+</PLUGIN>

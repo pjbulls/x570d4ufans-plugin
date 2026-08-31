@@ -1,0 +1,107 @@
+Menu="Dashboard:0"
+---
+<?php
+$pluginname = "x570d4ufans";
+if (!function_exists('x570d4ufans_is_running')) {
+  function x570d4ufans_is_running() {
+    $pidFile = '/var/run/x570d4ufans.pid';
+	$contents = @file_get_contents($pidFile);
+	if ($contents === false) {
+		return false;
+	}
+	$pid = (int)trim($contents);
+    if ($pid <= 0) return false;
+    if (function_exists('posix_kill')) {
+      return @posix_kill($pid, 0);
+    }
+    exec('kill -0 ' . $pid . ' 2>/dev/null', $out, $ret);
+    return $ret === 0;
+  }
+}
+$running = x570d4ufans_is_running();
+if ($running) {
+  $mytiles[$pluginname]['column2'] = <<<EOT
+<tbody id="tblX570d4ufans" title="_(Fans)_">
+<tr><td>
+<span class='tile-header'>
+    <span class='tile-header-left'>
+        <i class='icon-fan f32'></i>
+        <div class='section'>
+            <h3 class='tile-header-main'>_(Fans)_</h3>
+            <span>_(Overall)_: <span id="fw-system-pwm">&mdash;</span>&nbsp;<span id="fw-system-fan"></span></span>
+        </div>
+    </span>
+    <span class='tile-header-right'>
+        <span class='tile-header-right-controls'>
+            <!-- <a href='/Settings' title="_(Go to Settings)_">
+                <i class='fa fa-fw fa-cog control'></i>
+            </a> -->
+        </span>
+    </span>
+</span>
+</td></tr>
+<tr class="header"><td><span class="w26">_(Device)_</span><span class="w18">_(Temp)_</span><span class="w18">_(PWM)_</span><span class="w26">_(Fan)_</span></td></tr>
+<tr><td><span class="w26">_(CPU)_</span><span class="w18" id="fw-cpu-temp">&mdash;</span><span class="w18" id="fw-cpu-pwm">&mdash;</span><span class="w26" id="fw-cpu-fan">&mdash;</span></td></tr>
+<tr><td><span class="w26">_(GPU)_</span><span class="w18" id="fw-gpu-temp">&mdash;</span><span class="w18" id="fw-gpu-pwm">&mdash;</span><span class="w26" id="fw-gpu-fan">&mdash;</span></td></tr>
+<tr><td><span class="w26" id="fw-hdd-label">_(HDD)_</span><span class="w18" id="fw-hdd-temp">&mdash;</span><span class="w18" id="fw-hdd-pwm">&mdash;</span><span class="w26" id="fw-hdd-fan">&mdash;</span></td></tr>
+</tbody>
+EOT;
+}
+?>
+<?php if ($running): ?>
+<script>
+function fwFmtTemp(v) { return (v === null || v === undefined) ? '&mdash;' : Number(v).toFixed(1) + '&deg;C'; }
+function fwFmtPwm(v)  { return (v === null || v === undefined) ? '&mdash;' : Math.round(v) + '%'; }
+function fwFmtFanCell(fans) {
+  if (!fans || !fans.length) return '&mdash;';
+  if (fans.length === 1) {
+    var f = fans[0];
+    return (f.rpm !== null && f.rpm !== undefined) ? Math.round(f.rpm) + ' rpm' : f.status;
+  }
+  return fans.map(function(f) {
+    var r = (f.rpm !== null && f.rpm !== undefined) ? Math.round(f.rpm) + ' rpm' : f.status;
+    return f.name + ': ' + r;
+  }).join(', ');
+}
+function x570d4ufansRefresh() {
+  return $.getJSON('/plugins/x570d4ufans/include/status.php', function(state) {
+    var tile = $('#tblX570d4ufans');
+    if (!state || !state.running) {
+      tile.hide();
+      return;
+    }
+    tile.show();
+    var sys = state.system || {};
+    var cpu = state.cpu || {};
+    var gpu = state.gpu || {};
+    var hdd = state.hdd || {};
+    $('#fw-system-pwm').html(fwFmtPwm(sys.pwm));
+    $('#fw-system-fan').html(fwFmtFanCell(sys.fans));
+    $('#fw-cpu-temp').html(fwFmtTemp(cpu.temp));
+    $('#fw-cpu-pwm').html(fwFmtPwm(cpu.pwm));
+    $('#fw-cpu-fan').html(fwFmtFanCell(cpu.fans));
+    $('#fw-gpu-temp').html(fwFmtTemp(gpu.temp));
+    $('#fw-gpu-pwm').html(fwFmtPwm(gpu.pwm));
+    $('#fw-gpu-fan').html(fwFmtFanCell(gpu.fans));
+    $('#fw-hdd-temp').html(fwFmtTemp(hdd.hottest_temp));
+    $('#fw-hdd-pwm').html(fwFmtPwm(hdd.pwm));
+    $('#fw-hdd-fan').html(fwFmtFanCell(hdd.fans));
+    $('#fw-hdd-label').html('_(HDD)_' + (hdd.hottest_name ? ' (' + hdd.hottest_name + ')' : ''));
+  });
+}
+var fwRequestInFlight = false;
+function x570d4ufansTick() {
+  if (fwRequestInFlight) { setTimeout(x570d4ufansTick, 10000); return; }
+  fwRequestInFlight = true;
+  x570d4ufansRefresh().always(function() {
+    fwRequestInFlight = false;
+    setTimeout(x570d4ufansTick, 10000);
+  });
+}
+$(function() {
+  if (window.x570d4ufansInited) return;
+  window.x570d4ufansInited = true;
+  x570d4ufansTick();
+});
+</script>
+<?php endif; ?>

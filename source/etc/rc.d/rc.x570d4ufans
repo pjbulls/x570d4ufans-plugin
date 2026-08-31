@@ -1,0 +1,56 @@
+#!/bin/bash
+# rc.x570d4ufans - service control for the x570d4ufans plugin
+
+PLUGIN_DIR="/usr/local/emhttp/plugins/x570d4ufans"
+DAEMON="$PLUGIN_DIR/scripts/poll.sh"
+PIDFILE="/var/run/x570d4ufans.pid"
+LOGFILE="/var/log/x570d4ufans.log"
+LOCKFILE="/var/run/x570d4ufans.lock"
+
+start() {
+    (
+        flock -x -w 5 200 || { echo "Could not acquire lock."; exit 1; }
+        if [[ -f "$PIDFILE" ]] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+            echo "x570d4ufans already running (pid $(cat "$PIDFILE"))"
+            exit 0
+        fi
+        echo "Starting x570d4ufans..."
+        nohup "$DAEMON" >>"$LOGFILE" 2>&1 200>&- &
+        echo $! > "$PIDFILE"
+    ) 200>"$LOCKFILE"
+}
+
+stop() {
+    (
+        flock -x -w 5 200 || { echo "Could not acquire lock."; exit 1; }
+        if [[ ! -f "$PIDFILE" ]]; then
+            echo "x570d4ufans not running."
+            exit 0
+        fi
+        echo "Stopping x570d4ufans..."
+        kill "$(cat "$PIDFILE")" 2>/dev/null
+        rm -f "$PIDFILE"
+    ) 200>"$LOCKFILE"
+}
+
+restart() {
+    stop
+    sleep 1
+    start
+}
+
+status() {
+    if [[ -f "$PIDFILE" ]] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+        echo "x570d4ufans is running (pid $(cat "$PIDFILE"))."
+    else
+        echo "x570d4ufans is stopped."
+    fi
+}
+
+case "$1" in
+    start)   start   ;;
+    stop)    stop    ;;
+    restart) restart ;;
+    status)  status  ;;
+    *) echo "Usage: $0 {start|stop|restart|status}"; exit 1 ;;
+esac
